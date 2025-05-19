@@ -68,6 +68,11 @@ def stressPotential (numOperations : Nat) (seed : Nat := 0) : IO Unit := do
       println! s!"clist: {repr clist}"
       println! s!"clist': {repr clist'}"
       return
+    if !(potential clist' >= 0) then
+      println! s!"Amortisation failed!!! :/"
+      println! s!"Potential function is negative: {potential clist'}"
+      println! s!"clist': {repr clist'}"
+      return
     if (iteration % (numOperations / 100)) == 0 then
       println! s!"Finished {iteration} / {numOperations}"
     clist := clist'

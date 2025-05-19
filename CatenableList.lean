@@ -44,6 +44,9 @@ inductive AmortisationOp where
 deriving Repr
 open AmortisationOp
 
+theorem potentialStartsAtZero : potential nil = 0 := by
+  rfl
+
 def stressPotential (numOperations : Nat) (seed : Nat := 0) : IO Unit := do
   let maxAmortisedCost := 3
   let mut clist := nil

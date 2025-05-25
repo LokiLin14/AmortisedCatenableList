@@ -2,6 +2,10 @@ name = "exam_proofs"
 version = "0.1.0"
 defaultTargets = ["exam_proofs"]
 
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+
 [[lean_lib]]
 name = "CatenableList"
 

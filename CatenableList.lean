@@ -29,7 +29,7 @@ def append (cl cl' : CatenableList A) : CatenableList A :=
   | (_, nil) => cl
   | (catList (ccons a ncls), catList ncl') => catList (ccons a (ncls ++ [ncl']))
 
-def tail (cl : CatenableList A) : CatenableList A :=
+def tail {A : Type _} (cl : CatenableList A) : CatenableList A :=
   match cl with
   | nil => nil
   | catList (ccons _ ncls) => ncls.map catList |> List.foldr append nil
@@ -102,7 +102,6 @@ theorem foldlPotentialGoIsMonotonic {A : Type _} {a b : Nat} (p : a ≤ b) (ncls
     assumption
 end
 
-
 -- Checking potential function is valid by applying a random sequence of operations
 inductive AmortisationOp where
   | consOp : AmortisationOp
@@ -149,18 +148,9 @@ end CatenableList
 structure DebitList' where
   ccons :: (debits : Nat) (childs : List DebitList')
 
-namespace DebitList'
-
-def distanceFromBound (acc : Nat) (dl : DebitList') : Nat :=
+def DebitList'.distanceFromBound (acc : Nat) (dl : DebitList') : Nat :=
   let (DebitList'.ccons debits children) := dl
   children.foldl distanceFromBound (acc - dl.debits + 2) - 1
-
-end DebitList'
-
-def List.inits' : (l : List α) -> List (List α × α)
-  | List.nil => []
-  | List.cons a as => ([], a) :: (inits' as).map (fun (as', a') => (a :: as', a'))
--- #eval List.inits' [1, 2, 3] -- [([], 1), ([1], 2), ([1, 2], 3)]
 
 mutual
 inductive ListValidDebitList' : (acc : Nat) -> (dl : List DebitList') -> Type where
@@ -183,7 +173,7 @@ inductive DebitList where
   | debitList : (dl : DebitList') -> ValidDebitList' 0 dl -> DebitList
 
 mutual
-  inductive ListShapeEquals' : List (CatenableList' A) -> List DebitList' -> Prop where
+  inductive ListShapeEquals' {A : Type _} : List (CatenableList' A) -> List DebitList' -> Type _ where
     | nil : ListShapeEquals' [] []
     | cons : (c : CatenableList' A) -> (d : DebitList') ->
             (crest : List (CatenableList' A)) -> (drest : List DebitList') ->
@@ -191,15 +181,15 @@ mutual
             ListShapeEquals' crest drest ->
             ListShapeEquals' (c :: crest) (d :: drest)
 
-  inductive ShapeEquals' : CatenableList' A -> DebitList' -> Prop where
+  inductive ShapeEquals' {A : Type _} : CatenableList' A -> DebitList' -> Type _ where
     | ccons : (a : A) -> (cls : List (CatenableList' A)) -> (n : Nat) -> (dls : List DebitList') ->
         ListShapeEquals' cls dls ->
         ShapeEquals' (CatenableList'.ccons a cls) (DebitList'.ccons n dls)
 end
 
-inductive ShapeEquals : CatenableList A → DebitList → Prop where
+inductive ShapeEquals {A : Type _} : CatenableList A → DebitList → Type _ where
   | nil : ShapeEquals CatenableList.nil DebitList.nil
-  | succ : (cl : CatenableList' A) -> (dl : DebitList') -> (p : ValidDebitList' 0 dl) ->
+  | succ : {cl : CatenableList' A} -> {dl : DebitList'} -> {p : ValidDebitList' 0 dl} ->
       ShapeEquals' cl dl ->
       ShapeEquals (CatenableList.catList cl) (DebitList.debitList dl p)
 
@@ -235,31 +225,9 @@ theorem accAddLengthLeFoldlSizeSubDebits {dls : List DebitList'} {acc : Nat} (p 
   omega
 end
 
-def tail (dl : DebitList) : DebitList :=
-  sorry
-
-theorem tailPreservesShape (cl : CatenableList A) (dl : DebitList) :
-  ShapeEquals cl dl -> ShapeEquals (CatenableList.tail cl) (tail dl) := by
-  sorry
-
 def tailCost : DebitList -> Nat
   | nil => 0
   | debitList (ccons _ dls) _ => dls.length
-
-theorem tailDebitsAddCostLeDebits (dl : DebitList) :
-  sizeSubDebits (tail dl) + DebitList.tailCost dl - 3 ≤ sizeSubDebits dl :=
-  sorry
-
-def minDebitList (cl : CatenableList A) : DebitList :=
-  sorry
-
-theorem minPreservesShape (cl : CatenableList A) :
-  ShapeEquals cl (minDebitList cl) := by
-  sorry
-
-theorem minEqPotential (cl : CatenableList A) :
-  sizeSubDebits (minDebitList cl) = CatenableList.potential cl := by
-  sorry
 
 end DebitList
 
@@ -334,25 +302,241 @@ theorem potentialLeSizeSubDebits (p : ShapeEquals cl dl) :
   simp [CatenableList.potential, DebitList.sizeSubDebits]
   exact potentialGoLeDistanceFromBound p vp
 
-namespace CatenableList
+mutual
+def List.minListDebitList' {A : Type _} (acc : Nat) (cls : List (CatenableList' A)) :
+    Σ dls : List DebitList', ListValidDebitList' acc dls × ListShapeEquals' cls dls :=
+  match cls with
+  | .nil =>
+    Sigma.mk [] (ListValidDebitList'.nil, ListShapeEquals'.nil)
+  | .cons cl cls =>
+    let (Sigma.mk dl (pf0, pf1)) := cl.minDebitList' acc
+    let (Sigma.mk dls (pf2, pf3)) := cls.minListDebitList' (dl.distanceFromBound acc)
+    let pf4 := by
+      refine ListValidDebitList'.cons ?_ ?_
+      · assumption
+      · assumption
+    let pf5 := by
+      apply ListShapeEquals'.cons
+      · assumption
+      · assumption
+    Sigma.mk (dl :: dls) (pf4, pf5)
 
-theorem tailIsConstantTime : ∃ k : Nat, ∀ cl : CatenableList A,
+def CatenableList'.minDebitList' {A : Type _} (acc : Nat) (cl : CatenableList' A) :
+    Σ dl : DebitList', ValidDebitList' acc dl × ShapeEquals' cl dl :=
+  let (.ccons _ cls) := cl
+  let contrib := min acc cls.length
+  match h : cls.minListDebitList' (acc - contrib + 2) with
+  | (Sigma.mk dls (vdls, shapeEquality)) =>
+  let dl := DebitList'.ccons contrib dls
+  let vdl := by
+    refine ValidDebitList'.proofs ?_ ?_ vdls
+    · simp [dl, contrib]
+    · simp [dl, contrib]
+      have h' := listShapeEqualsImpLenEquals shapeEquality
+      simp [h']
+  let shapeEquality := by
+    simp [dl]
+    exact ShapeEquals'.ccons _ _ _ _ shapeEquality
+  Sigma.mk dl (vdl, shapeEquality)
+end
+
+def CatenableList.minDebitList {A : Type _} (cl : CatenableList A) : Σ dl : DebitList, ShapeEquals cl dl :=
+  match cl with
+  | .nil => Sigma.mk (DebitList.nil) ShapeEquals.nil
+  | .catList cl' =>
+    let (Sigma.mk dl (validity, shapeEquality)) := cl'.minDebitList' 0
+    Sigma.mk (.debitList dl validity) (ShapeEquals.succ shapeEquality)
+
+mutual
+theorem List.foldlMinDistanceFromBoundEqFoldlPotentialGo (cls : List (CatenableList' A)) (acc : Nat) :
+  (List.minListDebitList' acc cls).1.foldl DebitList'.distanceFromBound acc = cls.foldl CatenableList.potential.go acc := by
+  cases' cls with cl cls
+  · simp [List.minListDebitList']
+  · simp [List.minListDebitList']
+    rw [CatenableList'.minDistanceFromBoundEqPotentialGo]
+    apply List.foldlMinDistanceFromBoundEqFoldlPotentialGo cls _
+
+theorem CatenableList'.minDistanceFromBoundEqPotentialGo (cl : CatenableList' A) (acc : Nat) :
+  (cl.minDebitList' acc).1.distanceFromBound acc = CatenableList.potential.go acc cl := by
+  cases' cl with _ cls
+  simp [CatenableList'.minDebitList', DebitList'.distanceFromBound, CatenableList.potential.go]
+  congr
+  have h : acc - min acc cls.length + 2 = acc + 2 - min acc cls.length := by
+    omega
+  rewrite [h]
+  apply List.foldlMinDistanceFromBoundEqFoldlPotentialGo cls _
+end
+
+theorem CatenableList.minEqPotential (cl : CatenableList A) :
+  cl.minDebitList.1.sizeSubDebits = cl.potential := by
+  cases cl
+  · simp [minDebitList, DebitList.sizeSubDebits, potential]
+  · simp [DebitList.sizeSubDebits, minDebitList, potential]
+    apply CatenableList'.minDistanceFromBoundEqPotentialGo
+
+
+def DebitList'.append (dl dl' : DebitList') : DebitList' :=
+  match dl with
+  | .ccons debits dls => .ccons (debits + 1)  (dls ++ [dl'])
+
+def ValidDebitList'.snoc {acc : Nat} {dls : List DebitList'} {dl : DebitList'}
+                        (vdls : ListValidDebitList' acc dls)
+                        (vdl : ValidDebitList' (dls.foldl DebitList'.distanceFromBound acc) dl) :
+                        ListValidDebitList' acc (dls ++ [dl]) := by
+  cases' vdls with _ _ dl' dls vdl' vdls
+  · simp
+    simp at vdl
+    apply ListValidDebitList'.cons
+    · assumption
+    · exact ListValidDebitList'.nil
+  · simp
+    apply ListValidDebitList'.cons
+    · assumption
+    · apply ValidDebitList'.snoc
+      · assumption
+      · assumption
+
+def ValidDebitList'.append {acc : Nat} {dl dl' : DebitList'} (vdl : ValidDebitList' acc dl)
+  (vdl' : ValidDebitList' (dl.distanceFromBound acc + 1) dl') :
+    ValidDebitList' (acc + 1) (dl.append dl') := by
+  cases' dl with debits dls
+  cases' vdl with _ _ debitsLeAcc debitsLeChildren validChildren
+  simp [DebitList'.append]
+  apply ValidDebitList'.proofs <;> simp
+  · assumption
+  · assumption
+  · simp at validChildren
+    apply ValidDebitList'.snoc
+    · assumption
+    · simp [DebitList'.distanceFromBound] at vdl'
+      rewrite [Nat.sub_add_cancel (m := 1)] at vdl'
+      rotate_left
+      · calc
+          1 ≤ _ := by
+            simp at debitsLeAcc
+            simp_all only [le_add_iff_nonneg_left, zero_le]
+          (acc - debits + 2) ≤ _ := by
+            simp
+          (acc - debits + 2) + dls.length ≤ _ := by
+            exact DebitList.accAddLengthLeFoldlSizeSubDebits validChildren
+      assumption
+
+@[simp]
+def List.foldr' {A : Type _} (h : A) (ls : List A) (f : A -> A -> A) : A :=
+  match ls with
+  | .nil => h
+  | .cons x' ls => f h (ls.foldr' x' f)
+
+mutual
+def ListValidDebitList'.incAcc {dls : List DebitList'} {acc acc' : Nat}
+    (p : acc ≤ acc') (vdls : ListValidDebitList' acc dls) :
+    ListValidDebitList' acc' dls := by
+  match vdls with
+  | .nil =>
+    exact ListValidDebitList'.nil
+  | .cons vdl vdls =>
+    · apply ListValidDebitList'.cons
+      · apply ValidDebitList'.incAcc (acc := acc) (acc' := acc')
+        · exact p
+        · assumption
+      ·
+        sorry
+
+def ValidDebitList'.incAcc {dl : DebitList'} {acc acc' : Nat} (p : acc ≤ acc') (vdl : ValidDebitList' acc dl) :
+    ValidDebitList' acc' dl := by
+  match vdl with
+  | .proofs leAcc leChildren validChilds =>
+
+  cases' vdl with _ _ leAcc leChildren otherProofs
+  apply ValidDebitList'.proofs
+  · apply Nat.le_trans ?_ p
+    assumption
+  · exact leChildren
+  · apply ListValidDebitList'.incAcc ?_ validChilds
+    omega
+end
+
+-- TODO rename this to something more reasonable / following naming conventions
+def foldlListValidDebitLists {dl0 : DebitList'} {dls : List DebitList'} {n : Nat}
+                            (vdls : ListValidDebitList' n (dl0 :: dls)) :
+    ValidDebitList' (n + 1) (dls.foldr' dl0 DebitList'.append) := by
+  -- Proof based on recursively simplifying the foldr' away
+  match dls with -- cases on dls so foldr' can decide what to do
+  | .nil =>
+    -- non recursive case where append is not applied so we manually construct a ValidDebitList'
+    simp
+    cases' vdls with _ _ _ _ vdl0 _
+    have p : (n ≤ n + 1) := by
+      simp_all only [le_add_iff_nonneg_right, zero_le]
+    apply ValidDebitList'.incAcc p
+    assumption
+  | .cons dl1 dls => -- recursive case where append is applied
+    match vdls with
+    | .cons vdl0 vdls =>
+    simp
+    apply ValidDebitList'.append
+    · assumption
+    · apply foldlListValidDebitLists
+      assumption
+
+def DebitList'.dischargeDebits (dl : DebitList') (n : Nat) : DebitList' :=
+  sorry
+
+def DebitList.tail (dl : DebitList) : DebitList :=
+  match dl with
+  | nil => nil -- shortcircuit empty list case
+  | .debitList dl' vdl =>
+
+  let (.ccons debits dls) := dl'
+  match dls with
+  | .nil => DebitList.nil -- shortcircuit becomes empty list case
+  | .cons hdl dls =>
+  -- handle case where the resulting list is not empty
+  -- create a almost correct DebitList' that has the same shape as CatenableList.tail
+  let dl' := dls.foldr' (A := DebitList') hdl DebitList'.append
+  -- prove that dl' is almost valid
+  let pf0 : ValidDebitList' 3 dl' := by
+    match vdl with
+    | .proofs leAcc leChildren vChildren =>
+    simp at leAcc leChildren vChildren
+    exact foldlListValidDebitLists vChildren
+  -- create the final debitlist
+  let dl'' := dl'.dischargeDebits 3
+  -- show that it is valid DebitList by having dischargeDebits lower ValidDebitList' 3 to ValidDebitList' 0
+  let pf1 := by
+    sorry
+
+  DebitList.debitList dl'' pf1
+
+def tailPreservesShape (cl : CatenableList A) (dl : DebitList) :
+  ShapeEquals cl dl -> ShapeEquals cl.tail dl.tail := by
+  sorry
+
+theorem tailDebitsAddCostLeDebits (dl : DebitList) :
+  dl.tail.sizeSubDebits  + DebitList.tailCost dl - 3 ≤ dl.sizeSubDebits :=
+  sorry
+
+theorem CatenableList.tailIsConstantTime : ∃ k : Nat, ∀ cl : CatenableList A,
   tailCost cl ≤ k - ((potential (tail cl) : Int) - (potential cl : Int)) := by
   exists 3
   intros cl
-  let dl := DebitList.minDebitList cl
+  match h : cl.minDebitList with
+  | (Sigma.mk dl se') => ?_
+  simp at se'
   let dl' := DebitList.tail dl
   have se : ShapeEquals (tail cl) dl' := by
-    apply DebitList.tailPreservesShape
-    exact DebitList.minPreservesShape _
+    apply tailPreservesShape
+    exact se'
   have ineq0 : potential (tail cl) ≤ DebitList.sizeSubDebits dl' := by
     exact potentialLeSizeSubDebits se
   have ineq1 : DebitList.sizeSubDebits dl' + DebitList.tailCost dl - 3 ≤ DebitList.sizeSubDebits dl := by
     unfold dl'
-    exact DebitList.tailDebitsAddCostLeDebits dl
+    exact tailDebitsAddCostLeDebits dl
   have eq0 : DebitList.sizeSubDebits dl = potential cl := by
-    exact DebitList.minEqPotential _
+    have h' : dl = cl.minDebitList.1 := by
+      simp [h]
+    simp [h']
+    exact cl.minEqPotential
   have eq1 : cl.tailCost = dl.tailCost := by
-    exact shapeEqualsImpTailCostEq (DebitList.minPreservesShape _)
+    exact shapeEqualsImpTailCostEq se'
   omega
-end CatenableList
